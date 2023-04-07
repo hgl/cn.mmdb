@@ -1,0 +1,59 @@
+#!/bin/sh
+set -euo pipefail
+
+cmd_fetch() {
+	mkdir build
+	url=https://raw.githubusercontent.com/17mon/china_ip_list/master/china_ip_list.txt
+	curl -Lo build/cnip "$url"
+	if ! has_ipv6 build/cnip; then
+		url=http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest
+		curl -L "$url" | awk -F'|' '
+			$1 == "apnic" && $2 == "CN" && $3 == "ipv6" {
+				printf("%s/%s\n", $4, $5)
+			}
+		' >>build/cnip
+	fi
+}
+
+cmd_build() {
+	if [ ! -e build/cnip ]; then
+		cmd_fetch
+	fi
+
+	go run . build/cnip build/cn.mmdb
+}
+
+has_ipv6() {
+	grep -Eqm 1 '[0-9]{1,4}:' "$1"
+}
+
+cmd() {
+	if [ $# = 0 ]; then
+		cmd_help
+		return 1
+	fi
+	i=$#
+	while [ $i -gt 0 ]; do
+		j=1
+		cmd=cmd
+		for arg; do
+			if [ "$j" -gt "$i" ]; then
+				break
+			fi
+			cmd=${cmd}_$arg
+			j=$((j + 1))
+		done
+		# shellcheck disable=SC2312
+		if [ "$(command -v "$cmd")" = "$cmd" ]; then
+			break
+		fi
+		i=$((i - 1))
+	done
+	if [ $i = 0 ]; then
+		cmd_help "$1"
+		return 1
+	fi
+	shift $i
+	$cmd "$@"
+}
+cmd "$@"
